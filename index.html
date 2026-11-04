@@ -40,7 +40,7 @@
   <!-- 2. ESTILOS CSS PERSONALIZADOS (Sliders, Fuentes y Cuadrícula)          -->
   <!-- ===================================================================== -->
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains-Mono:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
     html, body { background-color: #0a0a0a; }
     body { font-family: 'Inter', sans-serif; color: #e5e5e5; -webkit-font-smoothing: antialiased; }
@@ -135,7 +135,7 @@
         </div>
       </section>
 
-      <!-- Gráfico de Líneas de Evolución Temporal (Mantiene la estructura intacta) -->
+      <!-- Gráfico de Líneas de Evolución Temporal -->
       <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-xs font-medium uppercase tracking-wider text-zinc-400">Evolución temporal</h3>
@@ -276,6 +276,10 @@
     let isDragging = false;
     let dragHistory = [];
 
+    // Gráfico: muestreo adaptativo (la gráfica se "comprime" al avanzar el tiempo)
+    const CHART_MAX_POINTS = 400; // al superar esto se reduce la resolución a la mitad
+    let chartStride = 5;          // se toma 1 punto cada N frames
+
     const $ = id => document.getElementById(id);
 
     // --- 5.4 INICIALIZACIÓN DE CHART.JS (Telemetría Temporal) ---
@@ -298,7 +302,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false, // Animación desactivada para alta velocidad a 60 FPS
+        animation: false,
         layout: { padding: { top: 6, bottom: 0, left: 0, right: 6 } },
         scales: {
           x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: '#52525b' }, border: { color: '#1d1d1d' } },
@@ -341,7 +345,9 @@
       $('txtK').textContent = k.toFixed(2);
       $('txtE').textContent = e.toFixed(2);
 
-      // Limpia todo el historial guardado en el gráfico
+      // Limpia el historial del gráfico y restablece el muestreo
+      frameCount = 0;
+      chartStride = 5;
       lineChart.data.labels = [];
       lineChart.data.datasets.forEach(d => d.data = []);
       lineChart.update();
@@ -351,7 +357,6 @@
     function updatePhysics(dt) {
       if (paused || !isSimulating || isDragging) return;
 
-      // Sub-stepping: 10 subpasos para prevenir atravesar el piso
       const subSteps = 10;
       const h = dt / subSteps;
 
@@ -361,26 +366,39 @@
         v += a * h;
         y += v * h;
 
-        // Choque Inelástico en el Suelo
+        // Disipación continua por fricción del aire (si k > 0)
+        if (k > 0) {
+          const fD = k * Math.abs(v);
+          const dyStep = Math.abs(v * h);
+          Eth_acumulada += fD * dyStep;
+        }
+
+        // Choque con el suelo: SOLO rebota si viene cayendo hacia abajo (v < 0)
         if (y <= 0) {
           y = 0;
-          const Ek_antes = 0.5 * m * v * v;
-          v = -e * v;
-          const Ek_despues = 0.5 * m * v * v;
+          if (v < 0) {
+            const Ek_antes = 0.5 * m * v * v;
+            v = -e * v;
+            const Ek_despues = 0.5 * m * v * v;
 
-          // Solo acumula calor por impacto si la elasticidad es menor a 1.0
-          if (e < 1.0) {
-            Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+            if (e < 1.0) {
+              Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+            }
           }
 
-          if (Math.abs(v) < 0.3) v = 0;
+          // Detención de micro-rebotes: la Ek descartada se convierte en calor
+          if ((e < 1.0 || k > 0) && Math.abs(v) < 0.3) {
+            Eth_acumulada += 0.5 * m * v * v;
+            v = 0;
+          }
         }
       }
       simTime += dt;
 
-      // Detección de reposo absoluto
-      if (y <= 0.01 && Math.abs(v) < 0.1) {
+      // Estado de reposo: la Ek restante también pasa a calor
+      if (y <= 0.01 && Math.abs(v) < 0.1 && (e < 1.0 || k > 0)) {
         y = 0;
+        Eth_acumulada += 0.5 * m * v * v;
         v = 0;
         isSimulating = false;
       }
@@ -414,17 +432,13 @@
       ctx.fillStyle = '#3f3f46';
       ctx.fillText('m', 14, FLOOR + 14);
 
-      // --- BALANCES DE ENERGÍA UNIFICADOS Y RECTIFICADOS ---
+      // --- BALANCES DE ENERGÍA ---
+      // E0 NO se recalcula aquí: se fija en resetSim y cuando se inyecta trabajo
+      // externo (arrastre). Así la línea "Total" realmente verifica la conservación.
       const Ep = Math.max(0, m * G * y);
       const Ek = Math.max(0, 0.5 * m * v * v);
-
-      // Si k = 0 y e = 1, Eth es 0 absoluto. De lo contrario usa el valor real acumulado.
-      const Eth = (k === 0 && e === 1.0) ? 0 : Eth_acumulada;
-
-      // Si no se está arrastrando, E0 refleja la suma real de las energías
-      if (!isDragging) {
-        E0 = Ep + Ek + Eth;
-      }
+      const Eth = Eth_acumulada;
+      const Etot = Math.max(E0, 1e-9);
 
       // Transición térmica visual: Azul (frío) -> Rojo/Rosa (caliente)
       const heatFactor = Math.min(1, Eth / Math.max(1, E0));
@@ -434,7 +448,7 @@
 
       const ballFill = isDragging ? '#e5e5e5' : `rgb(${rColor}, ${gColor}, ${bColor})`;
 
-      // Sombra Dinámica en el Piso
+      // Sombra Dinámica
       const shadowW = R * (1.6 - 0.6 * (y / 10));
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.beginPath();
@@ -447,13 +461,13 @@
       ctx.arc(actualBallX, FLOOR - y * SCALE - R, R, 0, Math.PI * 2);
       ctx.fill();
 
-      // Brillo interior para volumen 3D
+      // Brillo interior
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.beginPath();
       ctx.arc(actualBallX - R * 0.3, FLOOR - y * SCALE - R - R * 0.3, R * 0.35, 0, Math.PI * 2);
       ctx.fill();
 
-      // Actualización de Métricas y Barras en la Interfaz
+      // Actualización de Métricas y Barras
       $('metricH').textContent = `${y.toFixed(2)} m`;
       $('metricV').textContent = `${Math.abs(v).toFixed(2)} m/s`;
       $('metricM').textContent = `${m.toFixed(1)} kg`;
@@ -466,19 +480,26 @@
       $('txtBarEth').textContent = `${Eth.toFixed(1)} J`;
       $('txtBarEtotal').textContent = `${E0.toFixed(1)} J`;
 
-      $('barEp').style.width = `${Math.min(100, (Ep / E0) * 100)}%`;
-      $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
-      $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
+      $('barEp').style.width = `${Math.min(100, (Ep / Etot) * 100)}%`;
+      $('barEk').style.width = `${Math.min(100, (Ek / Etot) * 100)}%`;
+      $('barEth').style.width = `${Math.min(100, (Eth / Etot) * 100)}%`;
 
-      // --- ACTUALIZACIÓN DEL GRÁFICO TAL CUAL VENÍA EN TU CÓDIGO PROVISTO ---
+      // --- GRÁFICO DE LÍNEAS: acumula todo el historial (se comprime al avanzar) ---
       frameCount++;
-      if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
-        // Mantiene el comportamiento que tenías asignado en la función render del script
+      if (isSimulating && !paused && !isDragging && frameCount % chartStride === 0) {
         lineChart.data.labels.push(simTime.toFixed(1));
         lineChart.data.datasets[0].data.push(Ep);
         lineChart.data.datasets[1].data.push(Ek);
         lineChart.data.datasets[2].data.push(Eth);
         lineChart.data.datasets[3].data.push(E0);
+
+        // Si hay demasiados puntos, conserva uno de cada dos y muestrea más lento.
+        // Visualmente la gráfica sigue comprimiéndose, pero sin crecer sin límite.
+        if (lineChart.data.labels.length > CHART_MAX_POINTS) {
+          lineChart.data.labels = lineChart.data.labels.filter((_, i) => i % 2 === 0);
+          lineChart.data.datasets.forEach(d => { d.data = d.data.filter((_, i) => i % 2 === 0); });
+          chartStride *= 2;
+        }
         lineChart.update('none');
       }
     }
@@ -500,7 +521,6 @@
       const FLOOR = H - FLOOR_OFFSET;
       const ballPixelY = FLOOR - y * SCALE - R;
 
-      // Verifica si el clic/toque impacta dentro de la pelota
       const dist = Math.hypot(mouseX - BALL_X_FIXED, mouseY - ballPixelY);
       if (dist < R * 2) {
         isDragging = true;
@@ -523,6 +543,9 @@
 
       y = newY;
 
+      // Mientras se arrastra (v = 0), el trabajo externo cambia la energía total
+      E0 = m * G * y + Eth_acumulada;
+
       const now = performance.now();
       dragHistory.push({ y: y, t: now, x: BALL_X_FIXED });
       if (dragHistory.length > 5) dragHistory.shift();
@@ -543,7 +566,7 @@
           v = Math.max(-20, Math.min(20, v));
         }
       }
-      // Al soltar la pelota, redefinimos la nueva Energía Total del sistema
+      // Al soltar, la nueva energía total incluye la Ek del lanzamiento
       E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
     }
 
@@ -581,7 +604,7 @@
 
     // --- 5.10 BUCLE PRINCIPAL DE ANIMACIÓN (60 FPS GAME LOOP) ---
     function loop(t) {
-      const dt = Math.min(0.033, (t - lastTime) / 1000 || 0); // Límite de delta tiempo para evitar saltos bruscos
+      const dt = Math.min(0.033, (t - lastTime) / 1000 || 0);
       lastTime = t;
       updatePhysics(dt);
       render();
