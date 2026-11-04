@@ -141,13 +141,21 @@
         </div>
       </section>
 
-      <!-- Gráfico de Evolución Temporal con Scroll Horizontal Completo -->
+      <!-- Gráfico de Evolución Temporal con Leyenda FIJA y Auto-Scroll Suave -->
       <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
+        <!-- Encabezado y Leyenda FIJOS (No se mueven con el scroll) -->
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-xs font-medium uppercase tracking-wider text-zinc-400">Evolución temporal</h3>
-          <span class="text-[11px] text-zinc-500">Desplaza horizontalmente para examinar el historial</span>
+          <div class="flex items-center gap-4 text-[11px] text-zinc-400">
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-ep"></span>E<sub>p</sub></span>
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-ek"></span>E<sub>k</sub></span>
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-eth"></span>E<sub>th</sub></span>
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-zinc-200"></span>E<sub>Total</sub></span>
+          </div>
         </div>
-        <div class="relative w-full h-[220px] overflow-x-auto overflow-y-hidden custom-scroll">
+
+        <!-- Área desplazable solo para las líneas de la gráfica -->
+        <div id="chartScrollWrapper" class="relative w-full h-[200px] overflow-x-auto overflow-y-hidden custom-scroll">
           <div id="chartContainer" class="h-full min-w-full" style="width: 100%;">
             <canvas id="lineChart"></canvas>
           </div>
@@ -284,6 +292,20 @@
     let isDragging = false;
     let dragHistory = [];
 
+    // Control de auto-scroll para la gráfica
+    let userScrolledManually = false;
+    const scrollWrapper = document.getElementById('chartScrollWrapper');
+
+    scrollWrapper.addEventListener('scroll', () => {
+      const maxScroll = scrollWrapper.scrollWidth - scrollWrapper.clientWidth;
+      // Si el usuario se aleja más de 20px del final, detectamos interacción manual
+      if (maxScroll - scrollWrapper.scrollLeft > 20) {
+        userScrolledManually = true;
+      } else {
+        userScrolledManually = false;
+      }
+    });
+
     const $ = id => document.getElementById(id);
 
     // --- 5.4 CHART.JS ---
@@ -313,10 +335,7 @@
           y: { grid: { color: '#161616' }, min: 0, ticks: { color: '#52525b' }, border: { color: '#1d1d1d' } }
         },
         plugins: {
-          legend: {
-            position: 'bottom',
-            labels: { usePointStyle: true, boxWidth: 6, boxHeight: 6, padding: 16, font: { size: 11, family: 'Inter' }, color: '#a1a1aa' }
-          },
+          legend: { display: false }, // Desactivada la leyenda interna para usar el encabezado HTML FIJO
           tooltip: { backgroundColor: '#111', borderColor: '#262626', borderWidth: 1, titleColor: '#fafafa', bodyColor: '#d4d4d8', titleFont: { family: 'Inter' }, bodyFont: { family: 'JetBrains Mono' } }
         }
       }
@@ -336,6 +355,7 @@
       simTime = 0;
       isSimulating = true;
       isDragging = false;
+      userScrolledManually = false;
 
       if (paused) {
         paused = false;
@@ -349,11 +369,11 @@
       $('txtK').textContent = k.toFixed(2);
       $('txtE').textContent = e.toFixed(2);
 
-      // Limpiar datos y restaurar ancho dinámico del contenedor
       lineChart.data.labels = [];
       lineChart.data.datasets.forEach(d => d.data = []);
       if ($('chartContainer')) $('chartContainer').style.width = '100%';
       lineChart.update();
+      scrollWrapper.scrollLeft = 0;
     }
 
     // --- 5.6 MOTOR FÍSICO ---
@@ -486,7 +506,7 @@
       $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
       $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
 
-      // Gráfico de Líneas Acumulativo con Expandimiento de Ancho Dinámico
+      // Gráfico de Líneas Acumulativo con Auto-Scroll Fluido
       frameCount++;
       if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
         lineChart.data.labels.push(simTime.toFixed(1));
@@ -495,14 +515,19 @@
         lineChart.data.datasets[2].data.push(Eth);
         lineChart.data.datasets[3].data.push(E0);
 
-        // Si supera los 50 puntos visuales, extendemos el ancho del div para permitir el scroll horizontal
         const totalPoints = lineChart.data.labels.length;
-        if (totalPoints > 50) {
-          const newWidthPercent = (totalPoints / 50) * 100;
-          $('chartContainer').style.width = `${newWidthPercent}%`;
+        if (totalPoints > 40) {
+          // Escalamiento progresivo de ancho sin parpadeos
+          const pixelPerPoint = 14; 
+          $('chartContainer').style.width = `${totalPoints * pixelPerPoint}px`;
         }
 
         lineChart.update('none');
+
+        // AUTO-SCROLL: Sigue el avance automáticamente salvo que el usuario haya vuelto atrás a revisar
+        if (!userScrolledManually) {
+          scrollWrapper.scrollLeft = scrollWrapper.scrollWidth;
+        }
       }
     }
 
