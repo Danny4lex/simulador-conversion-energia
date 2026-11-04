@@ -37,7 +37,7 @@
   </script>
 
   <!-- ===================================================================== -->
-  <!-- 2. ESTILOS CSS PERSONALIZADOS (Sliders, Fuentes y Cuadrícula)          -->
+  <!-- 2. ESTILOS CSS PERSONALIZADOS (Sliders, Fuentes y Scrollbar)          -->
   <!-- ===================================================================== -->
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains-Mono:wght@400;500;600&display=swap');
@@ -45,7 +45,7 @@
     html, body { background-color: #0a0a0a; }
     body { font-family: 'Inter', sans-serif; color: #e5e5e5; -webkit-font-smoothing: antialiased; }
 
-    /* Personalización visual de los sliders de control (<input type="range">) */
+    /* Sliders (<input type="range">) */
     input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; width: 100%; }
     input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: #333; border-radius: 2px; }
     input[type="range"]::-moz-range-track { height: 2px; background: #333; border-radius: 2px; }
@@ -53,10 +53,10 @@
     input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
     input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: #fafafa; border-radius: 50%; border: 2px solid #0a0a0a; }
 
-    /* Estilo de atajos de teclado <kbd> */
+    /* Atajos de teclado <kbd> */
     kbd { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 1px 5px; border: 1px solid #333; border-bottom-width: 2px; border-radius: 4px; background: #161616; color: #d4d4d8; }
 
-    /* Textura de cuadrícula de fondo para el contenedor del Canvas */
+    /* Textura de cuadrícula de fondo para el Canvas */
     .canvas-frame {
       background-image:
         linear-gradient(#161616 1px, transparent 1px),
@@ -64,6 +64,12 @@
       background-size: 28px 28px;
       background-position: -1px -1px;
     }
+
+    /* Scrollbar personalizada para el gráfico horizontal */
+    .custom-scroll::-webkit-scrollbar { height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #111; border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #262626; border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #333; }
 
     ::selection { background: #fafafa; color: #0a0a0a; }
   </style>
@@ -96,7 +102,7 @@
     <!-- COLUMNA IZQUIERDA (Gráficos y Métricas) -->
     <div class="lg:col-span-8 flex flex-col gap-5 w-full">
 
-      <!-- Lienzo principal de animación (Canvas) -->
+      <!-- Canvas de Animación -->
       <section class="bg-ink-900 border border-ink-800 rounded-lg p-4 md:p-5">
         <div class="flex justify-between items-center mb-3">
           <span class="text-xs font-medium uppercase tracking-wider text-zinc-400">Simulación</span>
@@ -107,7 +113,7 @@
         </div>
       </section>
 
-      <!-- Panel de Métricas Numéricas Instantáneas -->
+      <!-- Panel de Métricas Numéricas -->
       <section class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-px bg-ink-800 border border-ink-800 rounded-lg overflow-hidden">
         <div class="bg-ink-950 px-4 py-3">
           <div class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Altura · h</div>
@@ -135,22 +141,24 @@
         </div>
       </section>
 
-      <!-- Gráfico de Líneas de Evolución Temporal -->
+      <!-- Gráfico de Evolución Temporal con Scroll Horizontal Completo -->
       <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-xs font-medium uppercase tracking-wider text-zinc-400">Evolución temporal</h3>
-          <span class="text-[11px] text-zinc-500">Línea de tramos: E<sub>Total</sub></span>
+          <span class="text-[11px] text-zinc-500">Desplaza horizontalmente para examinar el historial</span>
         </div>
-        <div class="relative w-full h-[220px]">
-          <canvas id="lineChart"></canvas>
+        <div class="relative w-full h-[220px] overflow-x-auto overflow-y-hidden custom-scroll">
+          <div id="chartContainer" class="h-full min-w-full" style="width: 100%;">
+            <canvas id="lineChart"></canvas>
+          </div>
         </div>
       </section>
     </div>
 
-    <!-- COLUMNA DERECHA (Controles y Barras Proporcionales) -->
+    <!-- COLUMNA DERECHA (Parámetros y Barras) -->
     <div class="lg:col-span-4 flex flex-col gap-5 w-full">
 
-      <!-- Controles de Ajuste de Parámetros Físicos -->
+      <!-- Controles -->
       <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
         <h2 class="text-xs font-medium uppercase tracking-wider text-zinc-400 mb-5">Parámetros</h2>
         <div class="space-y-5">
@@ -189,7 +197,7 @@
         </div>
       </section>
 
-      <!-- Visualizador de Barras del Balance Energético -->
+      <!-- Barras de Balance Energético -->
       <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
         <h2 class="text-xs font-medium uppercase tracking-wider text-zinc-400 mb-5">Balance energético</h2>
         <div class="space-y-4">
@@ -246,7 +254,7 @@
   <!-- 5. LÓGICA JAVASCRIPT: MOTOR FÍSICO, INTERFAZ Y RENDERIZADO            -->
   <!-- ===================================================================== -->
   <script>
-    // --- 5.1 GESTIÓN DE PANTALLA Y CANVAS ---
+    // --- 5.1 GESTIÓN DE CANVAS ---
     const canvas = document.getElementById('simCanvas');
     const ctx = canvas.getContext('2d');
 
@@ -258,14 +266,14 @@
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // --- 5.2 CONSTANTES FÍSICAS Y DE ESCALA ---
-    const FLOOR_OFFSET = 50; // Margen en px para el suelo
-    const SCALE = 30;        // Conversión: 1 metro = 30 píxeles
-    const G = 9.8;           // Gravedad (m/s²)
-    const R = 15;            // Radio de la pelota (px)
-    const BALL_X_FIXED = 220; // Posición X fija de la caída
+    // --- 5.2 CONSTANTES FÍSICAS ---
+    const FLOOR_OFFSET = 50;
+    const SCALE = 30;
+    const G = 9.8;
+    const R = 15;
+    const BALL_X_FIXED = 220;
 
-    // --- 5.3 VARIABLES DE ESTADO Y CONTROL ---
+    // --- 5.3 VARIABLES DE ESTADO ---
     let m = 1.0, h0 = 8.0, k = 0.1, e = 0.8;
     let y = 8.0, v = 0, E0 = 0;
     let Eth_acumulada = 0;
@@ -278,7 +286,7 @@
 
     const $ = id => document.getElementById(id);
 
-    // --- 5.4 INICIALIZACIÓN DE CHART.JS (Telemetría Temporal) ---
+    // --- 5.4 CHART.JS ---
     Chart.defaults.color = '#71717a';
     Chart.defaults.font.family = 'JetBrains Mono';
     Chart.defaults.font.size = 10;
@@ -301,7 +309,7 @@
         animation: false,
         layout: { padding: { top: 6, bottom: 0, left: 0, right: 6 } },
         scales: {
-          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: '#52525b' }, border: { color: '#1d1d1d' } },
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 12, color: '#52525b' }, border: { color: '#1d1d1d' } },
           y: { grid: { color: '#161616' }, min: 0, ticks: { color: '#52525b' }, border: { color: '#1d1d1d' } }
         },
         plugins: {
@@ -314,7 +322,7 @@
       }
     });
 
-    // --- 5.5 FUNCIÓN DE REINICIO DE SIMULACIÓN ---
+    // --- 5.5 REINICIO DE SIMULACIÓN ---
     function resetSim() {
       m = parseFloat($('inputM').value);
       h0 = parseFloat($('inputH').value);
@@ -341,12 +349,14 @@
       $('txtK').textContent = k.toFixed(2);
       $('txtE').textContent = e.toFixed(2);
 
+      // Limpiar datos y restaurar ancho dinámico del contenedor
       lineChart.data.labels = [];
       lineChart.data.datasets.forEach(d => d.data = []);
+      if ($('chartContainer')) $('chartContainer').style.width = '100%';
       lineChart.update();
     }
 
-    // --- 5.6 MÓDULO DE FÍSICA: INTEGRACIÓN Y CONSERVACIÓN DE ENERGÍA ---
+    // --- 5.6 MOTOR FÍSICO ---
     function updatePhysics(dt) {
       if (paused || !isSimulating || isDragging) return;
 
@@ -354,24 +364,24 @@
       const h = dt / subSteps;
 
       for (let i = 0; i < subSteps; i++) {
-        // Segunda Ley de Newton: Gravedad y Resistencia del Aire
+        // Segunda Ley de Newton
         const a = -G - (k / m) * v;
         v += a * h;
         y += v * h;
 
-        // Disipación continua por fricción del aire (si k > 0)
+        // Disipación por resistencia del aire si k > 0
         if (k > 0) {
           const fD = k * Math.abs(v);
           const dyStep = Math.abs(v * h);
           Eth_acumulada += fD * dyStep;
         }
 
-        // Choque con el suelo: SOLO rebota si viene cayendo hacia abajo (v < 0)
+        // Choque con el suelo: SOLO rebota cuando la velocidad sea negativa (cayendo)
         if (y <= 0) {
           y = 0;
           if (v < 0) {
             const Ek_antes = 0.5 * m * v * v;
-            v = -e * v; // Inversión limpia de velocidad
+            v = -e * v;
             const Ek_despues = 0.5 * m * v * v;
 
             if (e < 1.0) {
@@ -379,7 +389,7 @@
             }
           }
 
-          // Detención de micro-rebotes insignificantes
+          // Parada de micro-rebotes si hay pérdidas reales
           if ((e < 1.0 || k > 0) && Math.abs(v) < 0.3) {
             v = 0;
           }
@@ -395,7 +405,7 @@
       }
     }
 
-    // --- 5.7 MÓDULO DE RENDERIZADO Y VISUALIZACIÓN GRÁFICA ---
+    // --- 5.7 RENDERIZADO Y VISUALIZACIÓN ---
     function render() {
       const W = canvas.width;
       const H = canvas.height;
@@ -404,13 +414,13 @@
 
       ctx.clearRect(0, 0, W, H);
 
-      // Dibujo del Suelo
+      // Suelo
       ctx.fillStyle = '#111111';
       ctx.fillRect(0, FLOOR, W, H - FLOOR);
       ctx.fillStyle = '#333333';
       ctx.fillRect(0, FLOOR, W, 1);
 
-      // Dibujo de la Regla en Metros
+      // Regla en metros
       ctx.strokeStyle = '#262626';
       ctx.fillStyle = '#52525b';
       ctx.font = '10px JetBrains Mono';
@@ -423,19 +433,16 @@
       ctx.fillStyle = '#3f3f46';
       ctx.fillText('m', 14, FLOOR + 14);
 
-      // --- BALANCES DE ENERGÍA UNIFICADOS ---
+      // --- BALANCES DE ENERGÍA ---
       const Ep = Math.max(0, m * G * y);
       const Ek = Math.max(0, 0.5 * m * v * v);
-
-      // Si k = 0 y e = 1.0 (escenario ideal), la energía térmica se mantiene congelada en 0
       const Eth = (k === 0 && e === 1.0) ? 0 : Eth_acumulada;
 
-      // Si no se arrastra la pelota, E0 es la suma real de las componentes
       if (!isDragging) {
         E0 = (k === 0 && e === 1.0) ? (m * G * h0) : (Ep + Ek + Eth);
       }
 
-      // Transición térmica visual: Azul (frío) -> Rojo/Rosa (caliente)
+      // Color térmico dinámico
       const heatFactor = Math.min(1, Eth / Math.max(1, E0));
       const rColor = Math.round(96 + 59 * heatFactor);
       const gColor = Math.round(165 - 90 * heatFactor);
@@ -443,26 +450,26 @@
 
       const ballFill = isDragging ? '#e5e5e5' : `rgb(${rColor}, ${gColor}, ${bColor})`;
 
-      // Sombra Dinámica
+      // Sombra
       const shadowW = R * (1.6 - 0.6 * (y / 10));
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.beginPath();
       ctx.ellipse(actualBallX, FLOOR + 2, Math.max(4, shadowW), Math.max(2, shadowW * 0.25), 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Dibujo de la Pelota
+      // Pelota
       ctx.fillStyle = ballFill;
       ctx.beginPath();
       ctx.arc(actualBallX, FLOOR - y * SCALE - R, R, 0, Math.PI * 2);
       ctx.fill();
 
-      // Brillo interior
+      // Brillo interior 3D
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.beginPath();
       ctx.arc(actualBallX - R * 0.3, FLOOR - y * SCALE - R - R * 0.3, R * 0.35, 0, Math.PI * 2);
       ctx.fill();
 
-      // Actualización de Métricas y Barras
+      // Métricas UI
       $('metricH').textContent = `${y.toFixed(2)} m`;
       $('metricV').textContent = `${Math.abs(v).toFixed(2)} m/s`;
       $('metricM').textContent = `${m.toFixed(1)} kg`;
@@ -479,23 +486,27 @@
       $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
       $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
 
-      // Gráfico de líneas
+      // Gráfico de Líneas Acumulativo con Expandimiento de Ancho Dinámico
       frameCount++;
       if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
-        if (lineChart.data.labels.length > 50) {
-          lineChart.data.labels.shift();
-          lineChart.data.datasets.forEach(d => d.data.shift());
-        }
         lineChart.data.labels.push(simTime.toFixed(1));
         lineChart.data.datasets[0].data.push(Ep);
         lineChart.data.datasets[1].data.push(Ek);
         lineChart.data.datasets[2].data.push(Eth);
         lineChart.data.datasets[3].data.push(E0);
+
+        // Si supera los 50 puntos visuales, extendemos el ancho del div para permitir el scroll horizontal
+        const totalPoints = lineChart.data.labels.length;
+        if (totalPoints > 50) {
+          const newWidthPercent = (totalPoints / 50) * 100;
+          $('chartContainer').style.width = `${newWidthPercent}%`;
+        }
+
         lineChart.update('none');
       }
     }
 
-    // --- 5.8 MANEJO DE INTERACCIÓN DRAG & DROP Y TRABAJO EXTERNO ---
+    // --- 5.8 DRAG & DROP Y TRABAJO EXTERNO ---
     function getMouseY(e) {
       const rect = canvas.getBoundingClientRect();
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -557,7 +568,7 @@
       E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
     }
 
-    // --- 5.9 EVENT LISTENERS (Mouse, Touch, Teclado y Controles UI) ---
+    // --- 5.9 EVENT LISTENERS ---
     canvas.addEventListener('mousedown', handleStart);
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleEnd);
@@ -589,7 +600,7 @@
       }
     });
 
-    // --- 5.10 BUCLE PRINCIPAL DE ANIMACIÓN (60 FPS GAME LOOP) ---
+    // --- 5.10 GAME LOOP (60 FPS) ---
     function loop(t) {
       const dt = Math.min(0.033, (t - lastTime) / 1000 || 0);
       lastTime = t;
@@ -598,7 +609,7 @@
       requestAnimationFrame(loop);
     }
 
-    // Inicio de ejecución
+    // Inicialización
     resetSim();
     requestAnimationFrame(loop);
   </script>
