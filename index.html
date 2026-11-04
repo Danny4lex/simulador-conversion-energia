@@ -470,15 +470,28 @@
       $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
       $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
 
-      // Actualización del Gráfico de Líneas
+     // Muestra de datos para el Gráfico (cada 5 fotogramas para rendimiento)
       frameCount++;
       if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
-        // --- SE ELIMINÓ EL .shift() PARA CONSERVAR EL HISTORIAL COMPLETO DESDE EL INICIO ---
-        lineChart.data.labels.push(simTime.toFixed(1));
-        lineChart.data.datasets[0].data.push(Ep);
-        lineChart.data.datasets[1].data.push(Ek);
-        lineChart.data.datasets[2].data.push(Eth);
-        lineChart.data.datasets[3].data.push(E0);
+        // 1. Guardar el registro en el historial global
+        historicalData.push({
+          time: simTime.toFixed(1),
+          Ep: Ep,
+          Ek: Ek,
+          Eth: Eth,
+          E0: E0
+        });
+
+        // 2. Mantener la gráfica bonita: mostrar solo los últimos 60 puntos en pantalla
+        const maxVisiblePoints = 60;
+        const visibleSlice = historicalData.slice(-maxVisiblePoints);
+
+        lineChart.data.labels = visibleSlice.map(d => d.time);
+        lineChart.data.datasets[0].data = visibleSlice.map(d => d.Ep);
+        lineChart.data.datasets[1].data = visibleSlice.map(d => d.Ek);
+        lineChart.data.datasets[2].data = visibleSlice.map(d => d.Eth);
+        lineChart.data.datasets[3].data = visibleSlice.map(d => d.E0);
+
         lineChart.update('none');
       }
     }
