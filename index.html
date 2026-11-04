@@ -359,27 +359,27 @@
         v += a * h;
         y += v * h;
 
-        // Disipación continua por resistencia del aire si k > 0
+        // Disipación continua por fricción del aire (si k > 0)
         if (k > 0) {
           const fD = k * Math.abs(v);
           const dyStep = Math.abs(v * h);
           Eth_acumulada += fD * dyStep;
         }
 
-        // Detección de contacto con el suelo
+        // Choque con el suelo: SOLO rebota si viene cayendo hacia abajo (v < 0)
         if (y <= 0) {
           y = 0;
+          if (v < 0) {
+            const Ek_antes = 0.5 * m * v * v;
+            v = -e * v; // Inversión limpia de velocidad
+            const Ek_despues = 0.5 * m * v * v;
 
-          const Ek_antes = 0.5 * m * v * v;
-          v = -e * v; // Inversión de dirección y factor de restitución
-          const Ek_despues = 0.5 * m * v * v;
-
-          // Acumulación de pérdidas por impacto inelástico (e < 1.0)
-          if (e < 1.0) {
-            Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+            if (e < 1.0) {
+              Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+            }
           }
 
-          // Detención gradual de micro-rebotes si hay disipación
+          // Detención de micro-rebotes insignificantes
           if ((e < 1.0 || k > 0) && Math.abs(v) < 0.3) {
             v = 0;
           }
@@ -427,10 +427,10 @@
       const Ep = Math.max(0, m * G * y);
       const Ek = Math.max(0, 0.5 * m * v * v);
 
-      // Si k=0 y e=1.0 (escenario ideal), la energía térmica se congela estrictamente en 0
+      // Si k = 0 y e = 1.0 (escenario ideal), la energía térmica se mantiene congelada en 0
       const Eth = (k === 0 && e === 1.0) ? 0 : Eth_acumulada;
 
-      // Si no se arrastra, la energía total refleja las componentes actuales
+      // Si no se arrastra la pelota, E0 es la suma real de las componentes
       if (!isDragging) {
         E0 = (k === 0 && e === 1.0) ? (m * G * h0) : (Ep + Ek + Eth);
       }
