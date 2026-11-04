@@ -316,19 +316,18 @@
 
     // --- 5.5 FUNCIÓN DE REINICIO DE SIMULACIÓN ---
     function resetSim() {
-  m = parseFloat($('inputM').value);
-  h0 = parseFloat($('inputH').value);
-  k = parseFloat($('inputK').value);
-  e = parseFloat($('inputE').value);
+      m = parseFloat($('inputM').value);
+      h0 = parseFloat($('inputH').value);
+      k = parseFloat($('inputK').value);
+      e = parseFloat($('inputE').value);
 
-  y = h0;
-  v = 0;
-  // E0 se fija de forma absoluta al inicio
-  E0 = m * G * h0; 
-  Eth_acumulada = 0;
-  simTime = 0;
-  isSimulating = true;
-  isDragging = false;
+      y = h0;
+      v = 0;
+      E0 = m * G * h0; 
+      Eth_acumulada = 0;
+      simTime = 0;
+      isSimulating = true;
+      isDragging = false;
 
       if (paused) {
         paused = false;
@@ -361,41 +360,46 @@
         v += a * h;
         y += v * h;
 
-        // Acumular disipación por fricción del aire si k > 0
+        // Disipación por fricción continua del aire
         if (k > 0) {
           const fD = k * Math.abs(v);
           const dyStep = Math.abs(v * h);
           Eth_acumulada += fD * dyStep;
         }
 
-        // Choque con el Suelo
+        // Choque con el suelo
         if (y <= 0) {
           y = 0;
 
-          if (e === 1.0) {
-            // Rebote ideal puro: solo invierte el sentido de la velocidad sin perder nada
-            v = Math.abs(v); 
+          if (e === 1.0 && k === 0) {
+            // Invierte la dirección sin alterar la magnitud en escenario ideal
+            v = -v;
           } else {
             const Ek_antes = 0.5 * m * v * v;
             v = -e * v;
             const Ek_despues = 0.5 * m * v * v;
 
-            Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+            if (e < 1.0) {
+              Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+            }
           }
 
-          // Criterio de parada para micro-rebotes si hay fricción/inelasticidad
-          if (e < 1.0 && Math.abs(v) < 0.3) v = 0;
+          // Criterio de parada solo si hay pérdidas reales
+          if ((e < 1.0 || k > 0) && Math.abs(v) < 0.3) {
+            v = 0;
+          }
         }
       }
       simTime += dt;
 
       // Detección de reposo
-      if (y <= 0.01 && Math.abs(v) < 0.1) {
+      if (y <= 0.01 && Math.abs(v) < 0.1 && (e < 1.0 || k > 0)) {
         y = 0;
         v = 0;
         isSimulating = false;
       }
     }
+
     // --- 5.7 MÓDULO DE RENDERIZADO Y VISUALIZACIÓN GRÁFICA ---
     function render() {
       const W = canvas.width;
@@ -424,15 +428,13 @@
       ctx.fillStyle = '#3f3f46';
       ctx.fillText('m', 14, FLOOR + 14);
 
-      // --- BALANCES DE ENERGÍA UNIFICADOS ---
+      // --- BALANCES DE ENERGÍA ---
       const Ep = Math.max(0, m * G * y);
       const Ek = Math.max(0, 0.5 * m * v * v);
       const Eth = (k === 0 && e === 1.0) ? 0 : Eth_acumulada;
 
-      // En escenario ideal, E0 se fija al valor inicial (m*g*h0) o lo que tenga el sistema
-      if (k === 0 && e === 1.0 && !isDragging) {
-        E0 = m * G * h0;
-      } else if (!isDragging) {
+      // Si no se arrastra, la energía total es la suma de las componentes actuales
+      if (!isDragging) {
         E0 = Ep + Ek + Eth;
       }
 
@@ -451,7 +453,7 @@
       ctx.ellipse(actualBallX, FLOOR + 2, Math.max(4, shadowW), Math.max(2, shadowW * 0.25), 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Pelota
+      // Dibujo de la Pelota
       ctx.fillStyle = ballFill;
       ctx.beginPath();
       ctx.arc(actualBallX, FLOOR - y * SCALE - R, R, 0, Math.PI * 2);
@@ -463,7 +465,7 @@
       ctx.arc(actualBallX - R * 0.3, FLOOR - y * SCALE - R - R * 0.3, R * 0.35, 0, Math.PI * 2);
       ctx.fill();
 
-      // Actualización de Métricas y Barras
+      // Métricas numéricas
       $('metricH').textContent = `${y.toFixed(2)} m`;
       $('metricV').textContent = `${Math.abs(v).toFixed(2)} m/s`;
       $('metricM').textContent = `${m.toFixed(1)} kg`;
@@ -480,7 +482,7 @@
       $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
       $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
 
-      // Gráfico de líneas
+      // Gráfico temporal
       frameCount++;
       if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
         if (lineChart.data.labels.length > 50) {
@@ -542,23 +544,23 @@
     }
 
     function handleEnd() {
-  if (!isDragging) return;
-  isDragging = false;
+      if (!isDragging) return;
+      isDragging = false;
 
-  if (dragHistory.length >= 2) {
-    const first = dragHistory[0];
-    const last = dragHistory[dragHistory.length - 1];
-    const dy = last.y - first.y;
-    const dtSec = (last.t - first.t) / 1000;
+      if (dragHistory.length >= 2) {
+        const first = dragHistory[0];
+        const last = dragHistory[dragHistory.length - 1];
+        const dy = last.y - first.y;
+        const dtSec = (last.t - first.t) / 1000;
 
-    if (dtSec > 0.01) {
-      v = dy / dtSec;
-      v = Math.max(-20, Math.min(20, v));
+        if (dtSec > 0.01) {
+          v = dy / dtSec;
+          v = Math.max(-20, Math.min(20, v));
+        }
+      }
+      // Al soltar la pelota, redefinimos la nueva Energía Total del sistema
+      E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
     }
-  }
-  // Al soltar la pelota, redefinimos la nueva Energía Total del sistema
-  E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
-}
 
     // --- 5.9 EVENT LISTENERS (Mouse, Touch, Teclado y Controles UI) ---
     canvas.addEventListener('mousedown', handleStart);
