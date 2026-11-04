@@ -341,6 +341,7 @@
       $('txtK').textContent = k.toFixed(2);
       $('txtE').textContent = e.toFixed(2);
 
+      // Limpia todo el historial guardado en el gráfico
       lineChart.data.labels = [];
       lineChart.data.datasets.forEach(d => d.data = []);
       lineChart.update();
@@ -472,10 +473,7 @@
       // Actualización del Gráfico de Líneas
       frameCount++;
       if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
-        if (lineChart.data.labels.length > 50) {
-          lineChart.data.labels.shift();
-          lineChart.data.datasets.forEach(d => d.data.shift());
-        }
+        // --- SE ELIMINÓ EL .shift() PARA CONSERVAR EL HISTORIAL COMPLETO DESDE EL INICIO ---
         lineChart.data.labels.push(simTime.toFixed(1));
         lineChart.data.datasets[0].data.push(Ep);
         lineChart.data.datasets[1].data.push(Ek);
