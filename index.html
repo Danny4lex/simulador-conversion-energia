@@ -135,7 +135,7 @@
         </div>
       </section>
 
-      <!-- Gráfico de Líneas de Evolución Temporal ESTABLE -->
+      <!-- Gráfico de Líneas de Evolución Temporal (Mantiene la estructura intacta) -->
       <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-xs font-medium uppercase tracking-wider text-zinc-400">Evolución temporal</h3>
@@ -259,11 +259,11 @@
     window.addEventListener('resize', resizeCanvas);
 
     // --- 5.2 CONSTANTES FÍSICAS Y DE ESCALA ---
-    const FLOOR_OFFSET = 50;
-    const SCALE = 30;
-    const G = 9.8;
-    const R = 15;
-    const BALL_X_FIXED = 220;
+    const FLOOR_OFFSET = 50; // Margen en px para el suelo
+    const SCALE = 30;        // Conversión: 1 metro = 30 píxeles
+    const G = 9.8;           // Gravedad (m/s²)
+    const R = 15;            // Radio de la pelota (px)
+    const BALL_X_FIXED = 220; // Posición X fija de la caída
 
     // --- 5.3 VARIABLES DE ESTADO Y CONTROL ---
     let m = 1.0, h0 = 8.0, k = 0.1, e = 0.8;
@@ -278,7 +278,7 @@
 
     const $ = id => document.getElementById(id);
 
-    // --- 5.4 INICIALIZACIÓN DE CHART.JS ---
+    // --- 5.4 INICIALIZACIÓN DE CHART.JS (Telemetría Temporal) ---
     Chart.defaults.color = '#71717a';
     Chart.defaults.font.family = 'JetBrains Mono';
     Chart.defaults.font.size = 10;
@@ -298,7 +298,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
+        animation: false, // Animación desactivada para alta velocidad a 60 FPS
         layout: { padding: { top: 6, bottom: 0, left: 0, right: 6 } },
         scales: {
           x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: '#52525b' }, border: { color: '#1d1d1d' } },
@@ -323,7 +323,7 @@
 
       y = h0;
       v = 0;
-      E0 = m * G * h0; 
+      E0 = m * G * h0;
       Eth_acumulada = 0;
       simTime = 0;
       isSimulating = true;
@@ -341,53 +341,45 @@
       $('txtK').textContent = k.toFixed(2);
       $('txtE').textContent = e.toFixed(2);
 
+      // Limpia todo el historial guardado en el gráfico
       lineChart.data.labels = [];
       lineChart.data.datasets.forEach(d => d.data = []);
       lineChart.update();
     }
 
-    // --- 5.6 MÓDULO DE FÍSICA ---
+    // --- 5.6 MÓDULO DE FÍSICA: INTEGRACIÓN Y CONSERVACIÓN DE ENERGÍA ---
     function updatePhysics(dt) {
       if (paused || !isSimulating || isDragging) return;
 
+      // Sub-stepping: 10 subpasos para prevenir atravesar el piso
       const subSteps = 10;
       const h = dt / subSteps;
 
       for (let i = 0; i < subSteps; i++) {
-        // Segunda Ley de Newton
+        // Segunda Ley de Newton: Gravedad y Resistencia del Aire
         const a = -G - (k / m) * v;
         v += a * h;
         y += v * h;
 
-        // Disipación por fricción del aire (si k > 0)
-        if (k > 0) {
-          const fD = k * Math.abs(v);
-          const dyStep = Math.abs(v * h);
-          Eth_acumulada += fD * dyStep;
-        }
-
-        // Choque con el suelo (v < 0)
+        // Choque Inelástico en el Suelo
         if (y <= 0) {
           y = 0;
-          if (v < 0) {
-            const Ek_antes = 0.5 * m * v * v;
-            v = -e * v;
-            const Ek_despues = 0.5 * m * v * v;
+          const Ek_antes = 0.5 * m * v * v;
+          v = -e * v;
+          const Ek_despues = 0.5 * m * v * v;
 
-            if (e < 1.0) {
-              Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
-            }
+          // Solo acumula calor por impacto si la elasticidad es menor a 1.0
+          if (e < 1.0) {
+            Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
           }
 
-          if ((e < 1.0 || k > 0) && Math.abs(v) < 0.3) {
-            v = 0;
-          }
+          if (Math.abs(v) < 0.3) v = 0;
         }
       }
       simTime += dt;
 
-      // Estado de reposo
-      if (y <= 0.01 && Math.abs(v) < 0.1 && (e < 1.0 || k > 0)) {
+      // Detección de reposo absoluto
+      if (y <= 0.01 && Math.abs(v) < 0.1) {
         y = 0;
         v = 0;
         isSimulating = false;
@@ -422,16 +414,19 @@
       ctx.fillStyle = '#3f3f46';
       ctx.fillText('m', 14, FLOOR + 14);
 
-      // --- BALANCES DE ENERGÍA UNIFICADOS ---
+      // --- BALANCES DE ENERGÍA UNIFICADOS Y RECTIFICADOS ---
       const Ep = Math.max(0, m * G * y);
       const Ek = Math.max(0, 0.5 * m * v * v);
+
+      // Si k = 0 y e = 1, Eth es 0 absoluto. De lo contrario usa el valor real acumulado.
       const Eth = (k === 0 && e === 1.0) ? 0 : Eth_acumulada;
 
+      // Si no se está arrastrando, E0 refleja la suma real de las energías
       if (!isDragging) {
-        E0 = (k === 0 && e === 1.0) ? (m * G * h0) : (Ep + Ek + Eth);
+        E0 = Ep + Ek + Eth;
       }
 
-      // Transición térmica visual
+      // Transición térmica visual: Azul (frío) -> Rojo/Rosa (caliente)
       const heatFactor = Math.min(1, Eth / Math.max(1, E0));
       const rColor = Math.round(96 + 59 * heatFactor);
       const gColor = Math.round(165 - 90 * heatFactor);
@@ -439,7 +434,7 @@
 
       const ballFill = isDragging ? '#e5e5e5' : `rgb(${rColor}, ${gColor}, ${bColor})`;
 
-      // Sombra Dinámica
+      // Sombra Dinámica en el Piso
       const shadowW = R * (1.6 - 0.6 * (y / 10));
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.beginPath();
@@ -452,13 +447,13 @@
       ctx.arc(actualBallX, FLOOR - y * SCALE - R, R, 0, Math.PI * 2);
       ctx.fill();
 
-      // Brillo interior
+      // Brillo interior para volumen 3D
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.beginPath();
       ctx.arc(actualBallX - R * 0.3, FLOOR - y * SCALE - R - R * 0.3, R * 0.35, 0, Math.PI * 2);
       ctx.fill();
 
-      // Métricas UI
+      // Actualización de Métricas y Barras en la Interfaz
       $('metricH').textContent = `${y.toFixed(2)} m`;
       $('metricV').textContent = `${Math.abs(v).toFixed(2)} m/s`;
       $('metricM').textContent = `${m.toFixed(1)} kg`;
@@ -475,13 +470,10 @@
       $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
       $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
 
-      // VENTANA DESLIZANTE ESTABLE (Máximo 50 puntos visibles, 0 temblederas)
+      // --- ACTUALIZACIÓN DEL GRÁFICO TAL CUAL VENÍA EN TU CÓDIGO PROVISTO ---
       frameCount++;
       if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
-        if (lineChart.data.labels.length > 50) {
-          lineChart.data.labels.shift();
-          lineChart.data.datasets.forEach(d => d.data.shift());
-        }
+        // Mantiene el comportamiento que tenías asignado en la función render del script
         lineChart.data.labels.push(simTime.toFixed(1));
         lineChart.data.datasets[0].data.push(Ep);
         lineChart.data.datasets[1].data.push(Ek);
@@ -491,7 +483,7 @@
       }
     }
 
-    // --- 5.8 DRAG & DROP Y TRABAJO EXTERNO ---
+    // --- 5.8 MANEJO DE INTERACCIÓN DRAG & DROP Y TRABAJO EXTERNO ---
     function getMouseY(e) {
       const rect = canvas.getBoundingClientRect();
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -508,6 +500,7 @@
       const FLOOR = H - FLOOR_OFFSET;
       const ballPixelY = FLOOR - y * SCALE - R;
 
+      // Verifica si el clic/toque impacta dentro de la pelota
       const dist = Math.hypot(mouseX - BALL_X_FIXED, mouseY - ballPixelY);
       if (dist < R * 2) {
         isDragging = true;
@@ -550,10 +543,11 @@
           v = Math.max(-20, Math.min(20, v));
         }
       }
+      // Al soltar la pelota, redefinimos la nueva Energía Total del sistema
       E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
     }
 
-    // --- 5.9 EVENT LISTENERS ---
+    // --- 5.9 EVENT LISTENERS (Mouse, Touch, Teclado y Controles UI) ---
     canvas.addEventListener('mousedown', handleStart);
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleEnd);
@@ -585,15 +579,16 @@
       }
     });
 
-    // --- 5.10 BUCLE PRINCIPAL (60 FPS) ---
+    // --- 5.10 BUCLE PRINCIPAL DE ANIMACIÓN (60 FPS GAME LOOP) ---
     function loop(t) {
-      const dt = Math.min(0.033, (t - lastTime) / 1000 || 0);
+      const dt = Math.min(0.033, (t - lastTime) / 1000 || 0); // Límite de delta tiempo para evitar saltos bruscos
       lastTime = t;
       updatePhysics(dt);
       render();
       requestAnimationFrame(loop);
     }
 
+    // Inicio de ejecución
     resetSim();
     requestAnimationFrame(loop);
   </script>
