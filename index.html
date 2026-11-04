@@ -413,15 +413,17 @@
       ctx.fillStyle = '#3f3f46';
       ctx.fillText('m', 14, FLOOR + 14);
 
-      // --- BALANCES DE ENERGÍA CORREGIDOS Y UNIFICADOS ---
-const Ep = Math.max(0, m * G * y);
-const Ek = Math.max(0, 0.5 * m * v * v);
+      // --- BALANCES DE ENERGÍA UNIFICADOS Y RECTIFICADOS ---
+      const Ep = Math.max(0, m * G * y);
+      const Ek = Math.max(0, 0.5 * m * v * v);
 
-// Si k es 0, no hay pérdidas por fricción del aire.
-const Eth_friccion = (k > 0) ? Math.max(0, E0 - Ep - Ek - Eth_acumulada) : 0;
+      // Si k = 0 y e = 1, Eth es 0 absoluto. De lo contrario usa el valor real acumulado.
+      const Eth = (k === 0 && e === 1.0) ? 0 : Eth_acumulada;
 
-// Si e es 1, no hay pérdidas por rebote.
-const Eth = (e === 1.0 && k === 0) ? 0 : (Eth_acumulada + Eth_friccion);
+      // Si no se está arrastrando, E0 refleja la suma real de las energías
+      if (!isDragging) {
+        E0 = Ep + Ek + Eth;
+      }
 
       // Transición térmica visual: Azul (frío) -> Rojo/Rosa (caliente)
       const heatFactor = Math.min(1, Eth / Math.max(1, E0));
@@ -431,26 +433,26 @@ const Eth = (e === 1.0 && k === 0) ? 0 : (Eth_acumulada + Eth_friccion);
 
       const ballFill = isDragging ? '#e5e5e5' : `rgb(${rColor}, ${gColor}, ${bColor})`;
 
-      // Sombra Dinámica de la Pelota
+      // Sombra Dinámica en el Piso
       const shadowW = R * (1.6 - 0.6 * (y / 10));
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.beginPath();
       ctx.ellipse(actualBallX, FLOOR + 2, Math.max(4, shadowW), Math.max(2, shadowW * 0.25), 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Dibujo del Cuerpo (Pelota)
+      // Dibujo de la Pelota
       ctx.fillStyle = ballFill;
       ctx.beginPath();
       ctx.arc(actualBallX, FLOOR - y * SCALE - R, R, 0, Math.PI * 2);
       ctx.fill();
 
-      // Brillo interior para profundidad visual
+      // Brillo interior para volumen 3D
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.beginPath();
       ctx.arc(actualBallX - R * 0.3, FLOOR - y * SCALE - R - R * 0.3, R * 0.35, 0, Math.PI * 2);
       ctx.fill();
 
-      // Actualización directa de Valores Numéricos en la Interfaz
+      // Actualización de Métricas y Barras en la Interfaz
       $('metricH').textContent = `${y.toFixed(2)} m`;
       $('metricV').textContent = `${Math.abs(v).toFixed(2)} m/s`;
       $('metricM').textContent = `${m.toFixed(1)} kg`;
@@ -467,7 +469,7 @@ const Eth = (e === 1.0 && k === 0) ? 0 : (Eth_acumulada + Eth_friccion);
       $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
       $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
 
-      // Muestra de datos para el Gráfico (cada 5 fotogramas para rendimiento)
+      // Actualización del Gráfico de Líneas
       frameCount++;
       if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
         if (lineChart.data.labels.length > 50) {
@@ -529,24 +531,23 @@ const Eth = (e === 1.0 && k === 0) ? 0 : (Eth_acumulada + Eth_friccion);
     }
 
     function handleEnd() {
-      if (!isDragging) return;
-      isDragging = false;
+  if (!isDragging) return;
+  isDragging = false;
 
-      // Calcula el impulso de lanzamiento manual (Trabajo externo)
-      if (dragHistory.length >= 2) {
-        const first = dragHistory[0];
-        const last = dragHistory[dragHistory.length - 1];
-        const dy = last.y - first.y;
-        const dtSec = (last.t - first.t) / 1000;
+  if (dragHistory.length >= 2) {
+    const first = dragHistory[0];
+    const last = dragHistory[dragHistory.length - 1];
+    const dy = last.y - first.y;
+    const dtSec = (last.t - first.t) / 1000;
 
-        if (dtSec > 0.01) {
-          v = dy / dtSec;
-          v = Math.max(-20, Math.min(20, v));
-          // Recálculo de Energía Total por inyección externa de trabajo
-          E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
-        }
-      }
+    if (dtSec > 0.01) {
+      v = dy / dtSec;
+      v = Math.max(-20, Math.min(20, v));
     }
+  }
+  // Al soltar la pelota, redefinimos la nueva Energía Total del sistema
+  E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
+}
 
     // --- 5.9 EVENT LISTENERS (Mouse, Touch, Teclado y Controles UI) ---
     canvas.addEventListener('mousedown', handleStart);
