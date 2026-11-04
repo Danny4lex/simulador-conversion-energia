@@ -362,16 +362,18 @@
 
         // Choque Inelástico en el Suelo
         if (y <= 0) {
-          y = 0;
-          const Ek_antes = 0.5 * m * v * v;
-          v = -e * v; // Inversión y atenuación por elasticidad (e)
-          const Ek_despues = 0.5 * m * v * v;
+  y = 0;
+  const Ek_antes = 0.5 * m * v * v;
+  v = -e * v;
+  const Ek_despues = 0.5 * m * v * v;
 
-          // Pérdida mecánica convertida en calor acumulado
-          Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+  // Solo acumula calor por impacto si la elasticidad es menor a 1.0
+  if (e < 1.0) {
+    Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+  }
 
-          if (Math.abs(v) < 0.3) v = 0;
-        }
+  if (Math.abs(v) < 0.3) v = 0;
+}
       }
       simTime += dt;
 
@@ -411,11 +413,15 @@
       ctx.fillStyle = '#3f3f46';
       ctx.fillText('m', 14, FLOOR + 14);
 
-      // Balances de Energía Instantáneos
-      const Ep = Math.max(0, m * G * y);
-      const Ek = Math.max(0, 0.5 * m * v * v);
-      const Eth_friccion = Math.max(0, E0 - Ep - Ek - Eth_acumulada);
-      const Eth = Eth_acumulada + Eth_friccion;
+      // --- BALANCES DE ENERGÍA CORREGIDOS Y UNIFICADOS ---
+const Ep = Math.max(0, m * G * y);
+const Ek = Math.max(0, 0.5 * m * v * v);
+
+// Si k es 0, no hay pérdidas por fricción del aire.
+const Eth_friccion = (k > 0) ? Math.max(0, E0 - Ep - Ek - Eth_acumulada) : 0;
+
+// Si e es 1, no hay pérdidas por rebote.
+const Eth = (e === 1.0 && k === 0) ? 0 : (Eth_acumulada + Eth_friccion);
 
       // Transición térmica visual: Azul (frío) -> Rojo/Rosa (caliente)
       const heatFactor = Math.min(1, Eth / Math.max(1, E0));
