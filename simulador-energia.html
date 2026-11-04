@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador de Conversión de Energía</title>
+
+  <!-- ===================================================================== -->
+  <!-- 1. LIBRERÍAS EXTERNAS Y CONFIGURACIÓN DE TAILWIND CSS                 -->
+  <!-- ===================================================================== -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: {
+              950: '#0a0a0a',
+              900: '#111111',
+              850: '#161616',
+              800: '#1d1d1d',
+              700: '#262626',
+              600: '#333333',
+            },
+            ep: '#60a5fa',
+            ek: '#34d399',
+            eth: '#fb7185',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- ===================================================================== -->
+  <!-- 2. ESTILOS CSS PERSONALIZADOS (Sliders, Fuentes y Cuadrícula)          -->
+  <!-- ===================================================================== -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains-Mono:wght@400;500;600&display=swap');
+
+    html, body { background-color: #0a0a0a; }
+    body { font-family: 'Inter', sans-serif; color: #e5e5e5; -webkit-font-smoothing: antialiased; }
+
+    /* Personalización visual de los sliders de control (<input type="range">) */
+    input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; width: 100%; }
+    input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: #333; border-radius: 2px; }
+    input[type="range"]::-moz-range-track { height: 2px; background: #333; border-radius: 2px; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -6px; background: #fafafa; border-radius: 50%; border: 2px solid #0a0a0a; transition: transform .15s ease; }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+    input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: #fafafa; border-radius: 50%; border: 2px solid #0a0a0a; }
+
+    /* Estilo de atajos de teclado <kbd> */
+    kbd { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 1px 5px; border: 1px solid #333; border-bottom-width: 2px; border-radius: 4px; background: #161616; color: #d4d4d8; }
+
+    /* Textura de cuadrícula de fondo para el contenedor del Canvas */
+    .canvas-frame {
+      background-image:
+        linear-gradient(#161616 1px, transparent 1px),
+        linear-gradient(90deg, #161616 1px, transparent 1px);
+      background-size: 28px 28px;
+      background-position: -1px -1px;
+    }
+
+    ::selection { background: #fafafa; color: #0a0a0a; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center px-4 py-8 md:py-12">
+
+  <!-- ===================================================================== -->
+  <!-- 3. ESTRUCTURA HTML: ENCABEZADO Y LEYENDA                              -->
+  <!-- ===================================================================== -->
+  <header class="w-full max-w-7xl mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+    <div>
+      <p class="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 mb-2">Física · Conservación de la energía</p>
+      <h1 class="text-2xl md:text-3xl font-semibold tracking-tight text-zinc-50">Simulador de conversión de energía</h1>
+      <p class="text-sm text-zinc-400 mt-2 max-w-xl leading-relaxed">
+        Observa cómo la energía potencial, cinética y térmica se transforman entre sí. Arrastra la pelota para inyectar trabajo externo, o pulsa <kbd>Espacio</kbd> para pausar.
+      </p>
+    </div>
+    <div class="flex items-center gap-5 text-xs text-zinc-400">
+      <span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-ep"></span>E<sub>p</sub></span>
+      <span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-ek"></span>E<sub>k</sub></span>
+      <span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-eth"></span>E<sub>th</sub></span>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- 4. CONTENEDOR PRINCIPAL: DASHBOARD INTERACTIVO                        -->
+  <!-- ===================================================================== -->
+  <main class="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+    <!-- COLUMNA IZQUIERDA (Gráficos y Métricas) -->
+    <div class="lg:col-span-8 flex flex-col gap-5 w-full">
+
+      <!-- Lienzo principal de animación (Canvas) -->
+      <section class="bg-ink-900 border border-ink-800 rounded-lg p-4 md:p-5">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-xs font-medium uppercase tracking-wider text-zinc-400">Simulación</span>
+          <span class="text-xs text-zinc-500">Arrastra o <kbd>Espacio</kbd></span>
+        </div>
+        <div class="relative w-full h-[380px] bg-ink-950 rounded-md overflow-hidden border border-ink-800 canvas-frame">
+          <canvas id="simCanvas" width="700" height="380" class="w-full h-full cursor-grab active:cursor-grabbing touch-none"></canvas>
+        </div>
+      </section>
+
+      <!-- Panel de Métricas Numéricas Instantáneas -->
+      <section class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-px bg-ink-800 border border-ink-800 rounded-lg overflow-hidden">
+        <div class="bg-ink-950 px-4 py-3">
+          <div class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Altura · h</div>
+          <div id="metricH" class="font-mono text-base text-zinc-100 mt-1.5">0.0 m</div>
+        </div>
+        <div class="bg-ink-950 px-4 py-3">
+          <div class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Velocidad · v</div>
+          <div id="metricV" class="font-mono text-base text-zinc-100 mt-1.5">0.0 m/s</div>
+        </div>
+        <div class="bg-ink-950 px-4 py-3">
+          <div class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Masa · m</div>
+          <div id="metricM" class="font-mono text-base text-zinc-100 mt-1.5">1.0 kg</div>
+        </div>
+        <div class="bg-ink-950 px-4 py-3">
+          <div class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">E. Potencial</div>
+          <div id="metricEp" class="font-mono text-base text-ep mt-1.5">0.0 J</div>
+        </div>
+        <div class="bg-ink-950 px-4 py-3">
+          <div class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">E. Cinética</div>
+          <div id="metricEk" class="font-mono text-base text-ek mt-1.5">0.0 J</div>
+        </div>
+        <div class="bg-ink-950 px-4 py-3">
+          <div class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">E. Térmica · Q</div>
+          <div id="metricEth" class="font-mono text-base text-eth mt-1.5">0.0 J</div>
+        </div>
+      </section>
+
+      <!-- Gráfico de Líneas de Evolución Temporal -->
+      <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-medium uppercase tracking-wider text-zinc-400">Evolución temporal</h3>
+          <span class="text-[11px] text-zinc-500">Línea de tramos: E<sub>Total</sub></span>
+        </div>
+        <div class="relative w-full h-[220px]">
+          <canvas id="lineChart"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <!-- COLUMNA DERECHA (Controles y Barras Proporcionales) -->
+    <div class="lg:col-span-4 flex flex-col gap-5 w-full">
+
+      <!-- Controles de Ajuste de Parámetros Físicos -->
+      <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
+        <h2 class="text-xs font-medium uppercase tracking-wider text-zinc-400 mb-5">Parámetros</h2>
+        <div class="space-y-5">
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-2">
+              <span class="text-zinc-300">Altura inicial · h₀</span>
+              <span id="txtH" class="font-mono text-zinc-100">8.0 m</span>
+            </div>
+            <input type="range" id="inputH" min="1" max="10" step="0.5" value="8">
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-2">
+              <span class="text-zinc-300">Masa · m</span>
+              <span id="txtM" class="font-mono text-zinc-100">1.0 kg</span>
+            </div>
+            <input type="range" id="inputM" min="0.5" max="5" step="0.5" value="1">
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-2">
+              <span class="text-zinc-300">Fricción del aire · k</span>
+              <span id="txtK" class="font-mono text-zinc-100">0.10</span>
+            </div>
+            <input type="range" id="inputK" min="0" max="1" step="0.05" value="0.1">
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-2">
+              <span class="text-zinc-300">Elasticidad · e</span>
+              <span id="txtE" class="font-mono text-zinc-100">0.80</span>
+            </div>
+            <input type="range" id="inputE" min="0.2" max="1" step="0.05" value="0.8">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 mt-6">
+          <button id="btnPause" class="bg-zinc-50 hover:bg-white text-ink-950 font-medium text-sm py-2.5 px-4 rounded-md transition active:scale-[0.98]">Pausar</button>
+          <button id="btnReset" class="bg-transparent hover:bg-ink-850 text-zinc-300 font-medium text-sm py-2.5 px-4 rounded-md border border-ink-700 transition active:scale-[0.98]">Reiniciar</button>
+        </div>
+      </section>
+
+      <!-- Visualizador de Barras del Balance Energético -->
+      <section class="bg-ink-900 border border-ink-800 rounded-lg p-5">
+        <h2 class="text-xs font-medium uppercase tracking-wider text-zinc-400 mb-5">Balance energético</h2>
+        <div class="space-y-4">
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-1.5">
+              <span class="text-zinc-300">Potencial · E<sub>p</sub></span>
+              <span id="txtBarEp" class="font-mono text-zinc-400">0.0 J</span>
+            </div>
+            <div class="w-full h-1.5 bg-ink-800 rounded-full overflow-hidden">
+              <div id="barEp" class="h-full bg-ep transition-all duration-75" style="width: 0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-1.5">
+              <span class="text-zinc-300">Cinética · E<sub>k</sub></span>
+              <span id="txtBarEk" class="font-mono text-zinc-400">0.0 J</span>
+            </div>
+            <div class="w-full h-1.5 bg-ink-800 rounded-full overflow-hidden">
+              <div id="barEk" class="h-full bg-ek transition-all duration-75" style="width: 0%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-1.5">
+              <span class="text-zinc-300">Térmica · Q</span>
+              <span id="txtBarEth" class="font-mono text-zinc-400">0.0 J</span>
+            </div>
+            <div class="w-full h-1.5 bg-ink-800 rounded-full overflow-hidden">
+              <div id="barEth" class="h-full bg-eth transition-all duration-75" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="pt-3 mt-1 border-t border-ink-800">
+            <div class="flex justify-between items-baseline text-xs mb-1.5">
+              <span class="text-zinc-100 font-medium">Total · E₀</span>
+              <span id="txtBarEtotal" class="font-mono text-zinc-100">0.0 J</span>
+            </div>
+            <div class="w-full h-2 bg-ink-800 rounded-full overflow-hidden">
+              <div id="barTotal" class="h-full bg-zinc-100 transition-all duration-75" style="width: 100%"></div>
+            </div>
+          </div>
+        </div>
+        <p class="text-[11px] text-zinc-500 mt-5 leading-relaxed">
+          Si arrastras y lanzas la pelota inyectas trabajo externo al sistema: la energía total aumenta.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="w-full max-w-7xl mt-10 pt-6 border-t border-ink-800 text-[11px] text-zinc-600 flex justify-between">
+    <span>g = 9.8 m/s² · modelo lineal de fricción del aire</span>
+    <span>Caída libre + rebote inelástico</span>
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- 5. LÓGICA JAVASCRIPT: MOTOR FÍSICO, INTERFAZ Y RENDERIZADO            -->
+  <!-- ===================================================================== -->
+  <script>
+    // --- 5.1 GESTIÓN DE PANTALLA Y CANVAS ---
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- 5.2 CONSTANTES FÍSICAS Y DE ESCALA ---
+    const FLOOR_OFFSET = 50; // Margen en px para el suelo
+    const SCALE = 30;        // Conversión: 1 metro = 30 píxeles
+    const G = 9.8;           // Gravedad (m/s²)
+    const R = 15;            // Radio de la pelota (px)
+    const BALL_X_FIXED = 220; // Posición X fija de la caída
+
+    // --- 5.3 VARIABLES DE ESTADO Y CONTROL ---
+    let m = 1.0, h0 = 8.0, k = 0.1, e = 0.8;
+    let y = 8.0, v = 0, E0 = 0;
+    let Eth_acumulada = 0;
+    let paused = false, lastTime = 0, simTime = 0;
+    let frameCount = 0;
+    let isSimulating = true;
+
+    let isDragging = false;
+    let dragHistory = [];
+
+    const $ = id => document.getElementById(id);
+
+    // --- 5.4 INICIALIZACIÓN DE CHART.JS (Telemetría Temporal) ---
+    Chart.defaults.color = '#71717a';
+    Chart.defaults.font.family = 'JetBrains Mono';
+    Chart.defaults.font.size = 10;
+
+    const lineCtx = document.getElementById('lineChart').getContext('2d');
+    const lineChart = new Chart(lineCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Ep',  borderColor: '#60a5fa', backgroundColor: '#60a5fa22', data: [], borderWidth: 1.5, pointRadius: 0, fill: true,  tension: 0.25 },
+          { label: 'Ek',  borderColor: '#34d399', backgroundColor: '#34d39922', data: [], borderWidth: 1.5, pointRadius: 0, fill: true,  tension: 0.25 },
+          { label: 'Eth', borderColor: '#fb7185', backgroundColor: '#fb718522', data: [], borderWidth: 1.5, pointRadius: 0, fill: true,  tension: 0.25 },
+          { label: 'Total', borderColor: '#e5e5e5', borderDash: [4, 4], data: [], borderWidth: 1, pointRadius: 0, fill: false, tension: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false, // Animación desactivada para alta velocidad a 60 FPS
+        layout: { padding: { top: 6, bottom: 0, left: 0, right: 6 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: '#52525b' }, border: { color: '#1d1d1d' } },
+          y: { grid: { color: '#161616' }, min: 0, ticks: { color: '#52525b' }, border: { color: '#1d1d1d' } }
+        },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { usePointStyle: true, boxWidth: 6, boxHeight: 6, padding: 16, font: { size: 11, family: 'Inter' }, color: '#a1a1aa' }
+          },
+          tooltip: { backgroundColor: '#111', borderColor: '#262626', borderWidth: 1, titleColor: '#fafafa', bodyColor: '#d4d4d8', titleFont: { family: 'Inter' }, bodyFont: { family: 'JetBrains Mono' } }
+        }
+      }
+    });
+
+    // --- 5.5 FUNCIÓN DE REINICIO DE SIMULACIÓN ---
+    function resetSim() {
+      m = parseFloat($('inputM').value);
+      h0 = parseFloat($('inputH').value);
+      k = parseFloat($('inputK').value);
+      e = parseFloat($('inputE').value);
+
+      y = h0;
+      v = 0;
+      E0 = m * G * h0;
+      Eth_acumulada = 0;
+      simTime = 0;
+      isSimulating = true;
+      isDragging = false;
+
+      if (paused) {
+        paused = false;
+        $('btnPause').textContent = 'Pausar';
+        $('btnPause').classList.remove('bg-amber-400');
+        $('btnPause').classList.add('bg-zinc-50');
+      }
+
+      $('txtM').textContent = `${m.toFixed(1)} kg`;
+      $('txtH').textContent = `${h0.toFixed(1)} m`;
+      $('txtK').textContent = k.toFixed(2);
+      $('txtE').textContent = e.toFixed(2);
+
+      lineChart.data.labels = [];
+      lineChart.data.datasets.forEach(d => d.data = []);
+      lineChart.update();
+    }
+
+    // --- 5.6 MÓDULO DE FÍSICA: INTEGRACIÓN Y CONSERVACIÓN DE ENERGÍA ---
+    function updatePhysics(dt) {
+      if (paused || !isSimulating || isDragging) return;
+
+      // Sub-stepping: 10 subpasos para prevenir atravesar el piso
+      const subSteps = 10;
+      const h = dt / subSteps;
+
+      for (let i = 0; i < subSteps; i++) {
+        // Segunda Ley de Newton: Gravedad y Resistencia del Aire
+        const a = -G - (k / m) * v;
+        v += a * h;
+        y += v * h;
+
+        // Choque Inelástico en el Suelo
+        if (y <= 0) {
+          y = 0;
+          const Ek_antes = 0.5 * m * v * v;
+          v = -e * v; // Inversión y atenuación por elasticidad (e)
+          const Ek_despues = 0.5 * m * v * v;
+
+          // Pérdida mecánica convertida en calor acumulado
+          Eth_acumulada += Math.max(0, Ek_antes - Ek_despues);
+
+          if (Math.abs(v) < 0.3) v = 0;
+        }
+      }
+      simTime += dt;
+
+      // Detección de reposo absoluto
+      if (y <= 0.01 && Math.abs(v) < 0.1) {
+        y = 0;
+        v = 0;
+        isSimulating = false;
+      }
+    }
+
+    // --- 5.7 MÓDULO DE RENDERIZADO Y VISUALIZACIÓN GRÁFICA ---
+    function render() {
+      const W = canvas.width;
+      const H = canvas.height;
+      const FLOOR = H - FLOOR_OFFSET;
+      const actualBallX = isDragging ? (dragHistory.length > 0 ? dragHistory[dragHistory.length-1].x : BALL_X_FIXED) : BALL_X_FIXED;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // Dibujo del Suelo
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(0, FLOOR, W, H - FLOOR);
+      ctx.fillStyle = '#333333';
+      ctx.fillRect(0, FLOOR, W, 1);
+
+      // Dibujo de la Regla en Metros
+      ctx.strokeStyle = '#262626';
+      ctx.fillStyle = '#52525b';
+      ctx.font = '10px JetBrains Mono';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i += 2) {
+        const py = FLOOR - i * SCALE;
+        ctx.beginPath(); ctx.moveTo(36, py); ctx.lineTo(48, py); ctx.stroke();
+        ctx.fillText(`${i}`, 14, py + 3);
+      }
+      ctx.fillStyle = '#3f3f46';
+      ctx.fillText('m', 14, FLOOR + 14);
+
+      // Balances de Energía Instantáneos
+      const Ep = Math.max(0, m * G * y);
+      const Ek = Math.max(0, 0.5 * m * v * v);
+      const Eth_friccion = Math.max(0, E0 - Ep - Ek - Eth_acumulada);
+      const Eth = Eth_acumulada + Eth_friccion;
+
+      // Transición térmica visual: Azul (frío) -> Rojo/Rosa (caliente)
+      const heatFactor = Math.min(1, Eth / Math.max(1, E0));
+      const rColor = Math.round(96 + 59 * heatFactor);
+      const gColor = Math.round(165 - 90 * heatFactor);
+      const bColor = Math.round(250 - 165 * heatFactor);
+
+      const ballFill = isDragging ? '#e5e5e5' : `rgb(${rColor}, ${gColor}, ${bColor})`;
+
+      // Sombra Dinámica de la Pelota
+      const shadowW = R * (1.6 - 0.6 * (y / 10));
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(actualBallX, FLOOR + 2, Math.max(4, shadowW), Math.max(2, shadowW * 0.25), 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Dibujo del Cuerpo (Pelota)
+      ctx.fillStyle = ballFill;
+      ctx.beginPath();
+      ctx.arc(actualBallX, FLOOR - y * SCALE - R, R, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Brillo interior para profundidad visual
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.arc(actualBallX - R * 0.3, FLOOR - y * SCALE - R - R * 0.3, R * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Actualización directa de Valores Numéricos en la Interfaz
+      $('metricH').textContent = `${y.toFixed(2)} m`;
+      $('metricV').textContent = `${Math.abs(v).toFixed(2)} m/s`;
+      $('metricM').textContent = `${m.toFixed(1)} kg`;
+      $('metricEp').textContent = `${Ep.toFixed(1)} J`;
+      $('metricEk').textContent = `${Ek.toFixed(1)} J`;
+      $('metricEth').textContent = `${Eth.toFixed(1)} J`;
+
+      $('txtBarEp').textContent = `${Ep.toFixed(1)} J`;
+      $('txtBarEk').textContent = `${Ek.toFixed(1)} J`;
+      $('txtBarEth').textContent = `${Eth.toFixed(1)} J`;
+      $('txtBarEtotal').textContent = `${E0.toFixed(1)} J`;
+
+      $('barEp').style.width = `${Math.min(100, (Ep / E0) * 100)}%`;
+      $('barEk').style.width = `${Math.min(100, (Ek / E0) * 100)}%`;
+      $('barEth').style.width = `${Math.min(100, (Eth / E0) * 100)}%`;
+
+      // Muestra de datos para el Gráfico (cada 5 fotogramas para rendimiento)
+      frameCount++;
+      if (isSimulating && !paused && !isDragging && frameCount % 5 === 0) {
+        if (lineChart.data.labels.length > 50) {
+          lineChart.data.labels.shift();
+          lineChart.data.datasets.forEach(d => d.data.shift());
+        }
+        lineChart.data.labels.push(simTime.toFixed(1));
+        lineChart.data.datasets[0].data.push(Ep);
+        lineChart.data.datasets[1].data.push(Ek);
+        lineChart.data.datasets[2].data.push(Eth);
+        lineChart.data.datasets[3].data.push(E0);
+        lineChart.update('none');
+      }
+    }
+
+    // --- 5.8 MANEJO DE INTERACCIÓN DRAG & DROP Y TRABAJO EXTERNO ---
+    function getMouseY(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return clientY - rect.top;
+    }
+
+    function handleStart(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const mouseX = clientX - rect.left;
+      const mouseY = getMouseY(e);
+
+      const H = canvas.height;
+      const FLOOR = H - FLOOR_OFFSET;
+      const ballPixelY = FLOOR - y * SCALE - R;
+
+      // Verifica si el clic/toque impacta dentro de la pelota
+      const dist = Math.hypot(mouseX - BALL_X_FIXED, mouseY - ballPixelY);
+      if (dist < R * 2) {
+        isDragging = true;
+        v = 0;
+        isSimulating = true;
+        dragHistory = [{ y: y, t: performance.now(), x: BALL_X_FIXED }];
+      }
+    }
+
+    function handleMove(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+
+      const H = canvas.height;
+      const FLOOR = H - FLOOR_OFFSET;
+      const mouseY = getMouseY(e);
+
+      let newY = (FLOOR - mouseY - R) / SCALE;
+      newY = Math.max(0, Math.min(10, newY));
+
+      y = newY;
+
+      const now = performance.now();
+      dragHistory.push({ y: y, t: now, x: BALL_X_FIXED });
+      if (dragHistory.length > 5) dragHistory.shift();
+    }
+
+    function handleEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // Calcula el impulso de lanzamiento manual (Trabajo externo)
+      if (dragHistory.length >= 2) {
+        const first = dragHistory[0];
+        const last = dragHistory[dragHistory.length - 1];
+        const dy = last.y - first.y;
+        const dtSec = (last.t - first.t) / 1000;
+
+        if (dtSec > 0.01) {
+          v = dy / dtSec;
+          v = Math.max(-20, Math.min(20, v));
+          // Recálculo de Energía Total por inyección externa de trabajo
+          E0 = m * G * y + 0.5 * m * v * v + Eth_acumulada;
+        }
+      }
+    }
+
+    // --- 5.9 EVENT LISTENERS (Mouse, Touch, Teclado y Controles UI) ---
+    canvas.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+
+    canvas.addEventListener('touchstart', handleStart, { passive: false });
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+
+    $('inputH').oninput = resetSim;
+    $('inputM').oninput = resetSim;
+    $('inputK').oninput = () => { k = parseFloat($('inputK').value); $('txtK').textContent = k.toFixed(2); };
+    $('inputE').oninput = () => { e = parseFloat($('inputE').value); $('txtE').textContent = e.toFixed(2); };
+
+    $('btnReset').onclick = resetSim;
+
+    function togglePause() {
+      paused = !paused;
+      $('btnPause').textContent = paused ? 'Reanudar' : 'Pausar';
+      $('btnPause').classList.toggle('bg-zinc-50', !paused);
+      $('btnPause').classList.toggle('bg-amber-400', paused);
+    }
+
+    $('btnPause').onclick = togglePause;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        togglePause();
+      }
+    });
+
+    // --- 5.10 BUCLE PRINCIPAL DE ANIMACIÓN (60 FPS GAME LOOP) ---
+    function loop(t) {
+      const dt = Math.min(0.033, (t - lastTime) / 1000 || 0); // Límite de delta tiempo para evitar saltos bruscos
+      lastTime = t;
+      updatePhysics(dt);
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // Inicio de ejecución
+    resetSim();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
